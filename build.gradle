@@ -1,0 +1,121 @@
+
+version '1.0-SNAPSHOT'
+
+apply plugin: 'groovy'
+apply plugin: 'maven'
+apply plugin: 'spring-boot'
+
+bootRepackage {
+    mainClass = 'com.mttnow.email.provider.spike.Application'
+}
+
+sourceCompatibility = 1.8
+
+project.ext {
+    def nexusUrl = "http://nexus-build.int.mttnow.com"
+    mavenRepoUrl = "$nexusUrl/content/groups/mtt/"
+    mavenRepoReleaseUrl = "$nexusUrl/content/repositories/releases"
+    mavenRepoSnapshotUrl = "$nexusUrl/content/repositories/snapshots"
+    mavenRepoDeployUsername = "deployment"
+    mavenRepoDeployPassword = "mtt"
+
+    springVersion = '4.1.7.RELEASE'
+    springBootVersion = '1.2.5.RELEASE'
+    cukesVersion = '1.2.4'
+    groovyVersion = '2.4.3'
+    spockVersion = '1.0-groovy-2.4'
+    jacksonVersion = '2.6.1'
+    jacocoVersion = "0.7.4.201502262128"
+    qpidVersion = '0.32'
+    serverCommonVersion = '1.2.0'
+    tripStoreModelVersion = '1.2.5'
+    awaitilityVersion = '1.6.5'
+    httpComponentsVersion = '4.3.6'
+
+    project.rootProject.project('core')
+}
+
+buildscript {
+    repositories {
+        maven {
+            url "http://nexus-build.int.mttnow.com/content/groups/mtt/"
+        }
+        dependencies {
+            classpath "au.com.ish.gradle:release:2.1"
+            classpath 'org.springframework.boot:spring-boot-gradle-plugin:1.2.5.RELEASE'
+            classpath 'org.hidetake:gradle-ssh-plugin:0.1.8'
+        }
+    }
+}
+
+repositories {
+    maven {
+        url project.mavenRepoUrl
+    }
+    maven {
+        url "https://oss.sonatype.org/content/repositories/snapshots/"
+    }
+}
+
+dependencies {
+    compile "org.springframework.boot:spring-boot-starter-web:${springBootVersion}"
+    compile "org.springframework.boot:spring-boot-starter-actuator:${springBootVersion}"
+    compile "org.springframework:spring-context-support:${springVersion}"
+    compile "org.codehaus.groovy:groovy:${groovyVersion}"
+    compile "org.codehaus.groovy:groovy-json:${groovyVersion}"
+
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+}
+
+allprojects {
+    group = 'com.mttnow.email.provider.spike'
+
+    task wrapper(type: Wrapper) {
+        gradleVersion = 2.2
+    }
+
+    version = 'master-SNAPSHOT'
+    project.ext.releaseVersion = 'master-SNAPSHOT'
+
+    apply plugin: "maven"
+
+    repositories {
+        maven {
+            url project.mavenRepoUrl
+        }
+    }
+
+    uploadArchives {
+        repositories.mavenDeployer {
+            uniqueVersion = false
+
+            repository(url: project.mavenRepoReleaseUrl) {
+                authentication(userName: project.mavenRepoDeployUsername, password: project.mavenRepoDeployPassword)
+            }
+
+            snapshotRepository(url: mavenRepoSnapshotUrl) {
+                authentication(userName: project.mavenRepoDeployUsername, password: project.mavenRepoDeployPassword)
+            }
+        }
+    }
+}
+
+def serverProcess
+
+task startServer(dependsOn: ['assemble']) << {
+    Thread.start {
+        def command = "java -javaagent:$configurations.codeCoverage.singleFile=destfile=$buildDir/coverage-results/jacoco-acceptance.exec,append=true" +
+        " -Dspring.profiles.active=mock -Dqpid.tmp.dir=${project.buildDir}/qpid -Dserver.port=10876 -jar build/libs/${project.name}-${project.version}.jar"
+        println "Executing: ${command}"
+        def process = "$command".execute();
+        serverProcess = process
+        process.in.eachLine { line ->
+            println line
+        }
+    }
+}
+
+task stopServer << {
+    println 'Stopping server process'
+    serverProcess.destroy()
+}

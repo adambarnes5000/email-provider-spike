@@ -1,0 +1,4 @@
+rootProject.name = 'email-provider-spike'
+include 'core'
+include 'mailgun'
+
